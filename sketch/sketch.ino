@@ -5,13 +5,11 @@
 #include <List.hpp>
 
 struct CurveEntry {
-  float starting;
-  int factor;
+  float starting; // starting temperature when this step should be active
+  float factor; // percent per 0.1 degree (so 10% PWM duty cycle increase per 1° would be 0.1f)
 };
-
 List<CurveEntry> curve;
 float pwmStart = 0.1f;
-int percentPerDegree = 10;
 
 #define DHTPIN 7
 #define DHTTYPE DHT22
@@ -28,9 +26,9 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
 
-  // Default Settings: linear curve starting from 26° and 10% PWM duty cycle
-  CurveEntry defaultCurve = {26.0f, 1};
-  curve.addFirst(defaultCurve);
+  // Default Settings: linear curve starting from 26°, 10% per degree
+  CurveEntry defaultCurve = {26.0f, 0.1f};
+  curve.add(defaultCurve);
 
   // Start the Ethernet board and Sensor
   if (Ethernet.begin(mac) == 0) {
@@ -61,20 +59,20 @@ void loop() {
     if (temp >= curve.getValue(0).starting) { // temp is under threshold, power fans down
       pwmSignal = pwmStart;
 
+      // calculate PWM duty cycle
       for (int i = 0; i < curve.getSize(); i++) {
-        if (curve.getSize() > i + 1 && curve.getValue(i + 1).starting < temp) { // skip current step as only the next one will be relevant again
-          pwmSignal += (curve.getValue(i + 1).starting - curve.getValue(i).starting) * curve.getValue(i).factor / percentPerDegree;
+        if (i + 1 < curve.getSize() && curve.getValue(i + 1).starting < temp) { // skip current step as only the next one will be relevant again
+          pwmSignal += (curve.getValue(i + 1).starting - curve.getValue(i).starting) * curve.getValue(i).factor;
         } else {
-          pwmSignal += (temp - curve.getValue(i).starting) * curve.getValue(i).factor / percentPerDegree;
-
-          if (pwmSignal > 1.0f) {
-            pwmSignal = 1.0f;
-            break;
-          }
+          pwmSignal += (temp - curve.getValue(i).starting) * curve.getValue(i).factor;
+          break;
         }
       }
     }
   } else {
+    pwmSignal = 1.0f;
+  }
+  if (pwmSignal > 1.0f) { // make sure that the PWM signal is capped at 100%
     pwmSignal = 1.0f;
   }
   setPWM(pwmSignal);
