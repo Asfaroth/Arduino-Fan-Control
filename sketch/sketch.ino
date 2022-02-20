@@ -1,7 +1,17 @@
 #include <SPI.h>
 #include <Ethernet3.h>
 #include <Arduino_JSON.h>
-#include <DHT.h>;
+#include <DHT.h>
+#include <List.hpp>
+
+struct CurveEntry {
+  float starting;
+  int factor;
+};
+
+List<CurveEntry> curve;
+float pwmStart = 0.1f;
+int percentPerDegree = 10;
 
 #define DHTPIN 7
 #define DHTTYPE DHT22
@@ -14,15 +24,22 @@ IPAddress defaultIp(10, 0, 0, 2);
 EthernetServer server(80);
 
 void setup() {
+  // Shine LED_BUILTIN when setting up the Arduino.
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
 
+  // Default Settings: linear curve starting from 26° and 10% PWM duty cycle
+  CurveEntry defaultCurve = {26.0f, 1};
+  curve.addFirst(defaultCurve);
+
+  // Start the Ethernet board and Sensor
   if (Ethernet.begin(mac) == 0) {
     Ethernet.begin(mac, defaultIp);
   }
   server.begin();
   dht.begin();
 
+  // Configure PWM pin 3 and Timer2
   pinMode(3, OUTPUT);
   TIMSK2 = 0;
   TIFR2 = 0;
@@ -31,22 +48,34 @@ void setup() {
   OCR2A = 79;
   OCR2B = 0;
 
+  // Setup done, power off LED_BUILTIN
   digitalWrite(LED_BUILTIN, LOW);
 }
 
 void loop() {
   float temp = dht.readTemperature();
   float hum = dht.readHumidity();
-  float pwmSignal = 0.0;
+  float pwmSignal = 0.0f;
 
-  if (isnan(temp)) {
-    pwmSignal = 1.0f;
-  } else if (temp > 26.0f) { // begin at 26°, so that the PWM duty cycle begins at 10%. Below that the fan won't move either way.
-    if (temp > 35.0f) {
-      pwmSignal = 1.0f;
-    } else {
-      pwmSignal = (temp - 25.0f) / 10.0f;
+  if (!isnan(temp) && !curve.isEmpty()) {
+    if (temp >= curve.getValue(0).starting) { // temp is under threshold, power fans down
+      pwmSignal = pwmStart;
+
+      for (int i = 0; i < curve.getSize(); i++) {
+        if (curve.getSize() > i + 1 && curve.getValue(i + 1).starting < temp) { // skip current step as only the next one will be relevant again
+          pwmSignal += (curve.getValue(i + 1).starting - curve.getValue(i).starting) * curve.getValue(i).factor / percentPerDegree;
+        } else {
+          pwmSignal += (temp - curve.getValue(i).starting) * curve.getValue(i).factor / percentPerDegree;
+
+          if (pwmSignal > 1.0f) {
+            pwmSignal = 1.0f;
+            break;
+          }
+        }
+      }
     }
+  } else {
+    pwmSignal = 1.0f;
   }
   setPWM(pwmSignal);
   
