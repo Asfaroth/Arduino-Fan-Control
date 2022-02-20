@@ -12,3 +12,10 @@ It measures the temperature, exposes the gathered data via an API and controls a
 - LD33V 3.3V voltage regulator
 - two capacitors (for voltage regulation)
 - some perfboard
+
+# Arduino Dependencies
+
+- [Ethernet3](https://github.com/sstaub/Ethernet3)
+- [Arduino_JSON](https://github.com/arduino-libraries/Arduino_JSON)
+- [DHT sensor library](https://github.com/adafruit/DHT-sensor-library)
+- [Arduino List](https://github.com/nkaaf/Arduino-List/)

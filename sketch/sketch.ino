@@ -55,6 +55,8 @@ void loop() {
   float hum = dht.readHumidity();
   float pwmSignal = 0.0f;
 
+  /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ PWM Stuff ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+
   if (!isnan(temp) && !curve.isEmpty()) {
     if (temp >= curve.getValue(0).starting) { // temp is under threshold, power fans down
       pwmSignal = pwmStart;
@@ -76,6 +78,8 @@ void loop() {
     pwmSignal = 1.0f;
   }
   setPWM(pwmSignal);
+  
+  /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ETH Stuff ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
   
   EthernetClient client = server.available();
   if (client) {
@@ -118,6 +122,11 @@ void loop() {
   }
 }
 
+/**
+ * Method that sets the Timer2 register to the given duty cycle so that the PWM output is adopted.
+ * 
+ * @param f the new PWM duty cycle
+ */
 void setPWM(float f) {
     f=f<0?0:f>1?1:f;
     OCR2B = (uint8_t)(79*f);
