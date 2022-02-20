@@ -11,6 +11,17 @@ struct CurveEntry {
 List<CurveEntry> curve;
 float pwmStart = 0.1f;
 
+enum REQUESTTYPE {
+  NOT_KNOWN, GET, POST
+};
+enum REQUESTPATH {
+  NOT_FOUND, METRICS, CONFIG
+};
+struct Request {
+  REQUESTTYPE type;
+  REQUESTPATH path;
+};
+
 #define DHTPIN 7
 #define DHTTYPE DHT22
 DHT dht(DHTPIN, DHTTYPE);
@@ -83,37 +94,95 @@ void loop() {
   
   EthernetClient client = server.available();
   if (client) {
-    IPAddress ip = Ethernet.localIP();
-    String ipString = "";
-    for (byte thisByte = 0; thisByte < 4; thisByte++) {
-      ipString += String(ip[thisByte], DEC) + ".";
-    }
-
+    String reqString = "";
     boolean currentLineIsBlank = true;
+    boolean firstLine = true;
     while (client.connected()) {
       if (client.available()) {
         char c = client.read();
+
+        if (firstLine) {
+          reqString += c;
+        }
+
         if (c == '\n' && currentLineIsBlank) {
-          JSONVar response;
-          response["DTH22_temp"] = temp;
-          response["DTH22_hum"] = hum;
-          response["PWM_val"] = pwmSignal;
-          response["IP"] = ipString;
-          
-          client.println("HTTP/1.1 200 OK");
-          client.println("Content-Type: text/json");
-          client.println("Connection: close"); 
-          client.println("Refresh: 5");
-          client.println();
-          client.println(JSON.stringify(response));
-          
+          Request req = extractRequestInformation(reqString);
+
+          switch (req.type) {
+            case GET: {
+              switch(req.path) {
+                case METRICS: {
+                  JSONVar response;
+                  response["DTH22_temp"] = temp;
+                  response["DTH22_hum"] = hum;
+                  response["PWM_val"] = pwmSignal;
+                  
+                  client.println("HTTP/1.1 200 OK");
+                  client.println("Content-Type: text/json");
+                  client.println("Connection: close"); 
+                  client.println("Refresh: 5");
+                  client.println();
+                  client.println(JSON.stringify(response));
+                  
+                  break;
+                } case CONFIG: {
+                  JSONVar response;
+                  response["IP"] = getIPString(Ethernet.localIP());
+                  
+                  client.println("HTTP/1.1 200 OK");
+                  client.println("Content-Type: text/json");
+                  client.println("Connection: close");
+                  client.println();
+                  client.println(JSON.stringify(response));
+
+                  break;
+                } default: {
+                  client.println("HTTP/1.1 404 Not Found");
+                  client.println("Content-Type: text/html");
+                  client.println("Connection: close");
+                  client.println();
+                  client.println("404 Not Found");
+
+                  break;
+                }
+              }
+
+              break;
+            } case POST: {
+              switch (req.path) {
+                case CONFIG: {
+                  break;
+                } default: {
+                  client.println("HTTP/1.1 405 Method Not Allowed");
+                  client.println("Content-Type: text/html");
+                  client.println("Connection: close");
+                  client.println();
+                  client.println("405 Method Not Allowed");
+
+                  break;
+                }
+              }
+
+              break;
+            } default: {
+              client.println("HTTP/1.1 405 Method Not Allowed");
+              client.println("Content-Type: text/html");
+              client.println("Connection: close");
+              client.println();
+              client.println("405 Method Not Allowed");
+
+              break;
+            }
+          }
           break;
         }
+
         if (c == '\n') {
           currentLineIsBlank = true;
-        }
-        else if (c != '\r') {
+        } else if (c != '\r') {
           currentLineIsBlank = false;
+        } else { // as soon as the first \r reset firstLine as we got all information what we needed
+          firstLine = false;
         }
       }
     }
@@ -130,4 +199,57 @@ void loop() {
 void setPWM(float f) {
     f=f<0?0:f>1?1:f;
     OCR2B = (uint8_t)(79*f);
+}
+
+/**
+ * Method that transforms a given IP Address object into a String.
+ * 
+ * @param ip the IP Address that should be transformed
+ * @return String the built String representation
+ */
+String getIPString(IPAddress ip) {
+  String ipString = "";
+  for (byte i = 0; i < 4; i++) {
+    ipString += String(ip[i], DEC);
+
+    if (i < 3) {
+      ipString += ".";
+    }
+  }
+  return ipString;
+}
+
+Request extractRequestInformation(String firstLine) {
+  Request req = {GET, METRICS};
+
+  String buffer = "";
+  boolean methodFound = false;
+  for (int i = 0; i < firstLine.length(); i++) {
+    if (firstLine.charAt(i) == ' ') {
+      if (methodFound) {
+        if (buffer.equals("/metrics")) {
+          req.path = METRICS;
+        } else if (buffer.equals("/config")) {
+          req.path = CONFIG;
+        } else {
+          req.path = NOT_FOUND;
+        }
+        break;
+      } else {
+        if (buffer.equals("GET")) {
+          req.type = GET;
+        } else if(buffer.equals("POST")) {
+          req.type = POST;
+        } else {
+          req.type = NOT_KNOWN;
+        }
+        buffer = "";
+        methodFound = true;
+      }
+    } else {
+      buffer += firstLine.charAt(i);
+    }
+  }
+
+  return req;
 }
