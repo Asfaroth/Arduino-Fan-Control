@@ -114,11 +114,7 @@ void loop() {
                   response["DTH22_hum"] = hum;
                   response["PWM_val"] = pwmSignal;
                   
-                  client.println("HTTP/1.1 200 OK");
-                  client.println("Content-Type: text/json");
-                  client.println("Connection: close"); 
-                  client.println("Refresh: 5");
-                  client.println();
+                  generateAnswer("200 OK", client);
                   client.println(JSON.stringify(response));
                   
                   break;
@@ -137,19 +133,12 @@ void loop() {
                   response["pwm_start"] = pwmStart;
                   response["curve"] = curveJSON;
                   
-                  client.println("HTTP/1.1 200 OK");
-                  client.println("Content-Type: text/json");
-                  client.println("Connection: close");
-                  client.println();
+                  generateAnswer("200 OK", client);
                   client.println(JSON.stringify(response));
 
                   break;
                 } default: {
-                  client.println("HTTP/1.1 404 Not Found");
-                  client.println("Content-Type: text/html");
-                  client.println("Connection: close");
-                  client.println();
-                  client.println("404 Not Found");
+                  generateAnswer("404 Not Found", client);
 
                   break;
                 }
@@ -159,21 +148,19 @@ void loop() {
             } case POST: {
               switch (req.path) {
                 case CONFIG: {
-                  client.println("HTTP/1.1 200 OK");
-                  client.println("Content-Type: text/json");
-                  client.println("Connection: close");
-                  client.println();
-                  client.println(req.contentLength, DEC);
-                  client.println(test);
-                  client.println(parsed);
+                  String body = "";
+                  for (int i = 0; i < req.contentLength; i++) {
+                    body += (char)client.read();
+                  }
+
+                  // TODO: parse String and adopt into Settings
+
+                  generateAnswer("200 OK", client);
+                  client.println(body);
 
                   break;
                 } default: {
-                  client.println("HTTP/1.1 405 Method Not Allowed");
-                  client.println("Content-Type: text/html");
-                  client.println("Connection: close");
-                  client.println();
-                  client.println("405 Method Not Allowed");
+                  generateAnswer("405 Method Not Allowed", client);
 
                   break;
                 }
@@ -181,19 +168,11 @@ void loop() {
 
               break;
             } case BAD: {
-              client.println("HTTP/1.1 400 Bad Request");
-              client.println("Content-Type: text/html");
-              client.println("Connection: close");
-              client.println();
-              client.println("400 Bad Request");
+              generateAnswer("400 Bad Request", client);
 
               break;
             } default: {
-              client.println("HTTP/1.1 405 Method Not Allowed");
-              client.println("Content-Type: text/html");
-              client.println("Connection: close");
-              client.println();
-              client.println("405 Method Not Allowed");
+              generateAnswer("405 Method Not Allowed", client);
 
               break;
             }
@@ -291,4 +270,11 @@ Request extractRequestInformation(String firstLine) {
   }
 
   return req;
+}
+
+void generateAnswer(String answer, EthernetClient client) {
+  client.println("HTTP/1.1 " + answer);
+  client.println("Content-Type: text/html");
+  client.println("Connection: close");
+  client.println();
 }
