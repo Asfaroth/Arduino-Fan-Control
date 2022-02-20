@@ -12,7 +12,7 @@ List<CurveEntry> curve;
 float pwmStart = 0.1f;
 
 enum REQUESTTYPE {
-  NOT_KNOWN, GET, POST
+  NOT_KNOWN, GET, POST, BAD
 };
 enum REQUESTPATH {
   NOT_FOUND, METRICS, CONFIG
@@ -20,6 +20,7 @@ enum REQUESTPATH {
 struct Request {
   REQUESTTYPE type;
   REQUESTPATH path;
+  int contentLength;
 };
 
 #define DHTPIN 7
@@ -94,6 +95,8 @@ void loop() {
   
   EthernetClient client = server.available();
   if (client) {
+    Request req = {BAD, NOT_FOUND, 0}; // will be initialized with the very first line from the HTTP Request
+
     String reqString = "";
     boolean currentLineIsBlank = true;
     boolean firstLine = true;
@@ -101,13 +104,7 @@ void loop() {
       if (client.available()) {
         char c = client.read();
 
-        if (firstLine) {
-          reqString += c;
-        }
-
         if (c == '\n' && currentLineIsBlank) {
-          Request req = extractRequestInformation(reqString);
-
           switch (req.type) {
             case GET: {
               switch(req.path) {
@@ -162,6 +159,14 @@ void loop() {
             } case POST: {
               switch (req.path) {
                 case CONFIG: {
+                  client.println("HTTP/1.1 200 OK");
+                  client.println("Content-Type: text/json");
+                  client.println("Connection: close");
+                  client.println();
+                  client.println(req.contentLength, DEC);
+                  client.println(test);
+                  client.println(parsed);
+
                   break;
                 } default: {
                   client.println("HTTP/1.1 405 Method Not Allowed");
@@ -173,6 +178,14 @@ void loop() {
                   break;
                 }
               }
+
+              break;
+            } case BAD: {
+              client.println("HTTP/1.1 400 Bad Request");
+              client.println("Content-Type: text/html");
+              client.println("Connection: close");
+              client.println();
+              client.println("400 Bad Request");
 
               break;
             } default: {
@@ -190,10 +203,23 @@ void loop() {
 
         if (c == '\n') {
           currentLineIsBlank = true;
+          reqString = "";
         } else if (c != '\r') {
           currentLineIsBlank = false;
-        } else { // as soon as the first \r appears: reset firstLine as we got all information what we need
-          firstLine = false;
+          reqString += c;
+        } else { // \r signals a line ending, check here if the header is relevant
+          if (firstLine) {
+            req = extractRequestInformation(reqString);
+
+            firstLine = false;
+          }
+
+          reqString.toLowerCase();
+          if (reqString.startsWith("content-length:")) {
+            reqString.replace("\"", "");
+            reqString.remove(0, 16);
+            req.contentLength = reqString.toInt();
+          }
         }
       }
     }
@@ -237,7 +263,7 @@ String getIPString(IPAddress ip) {
  * @return Request struct object that caontains the needed request data to process it further
  */
 Request extractRequestInformation(String firstLine) {
-  Request req = {GET, METRICS};
+  Request req = {NOT_KNOWN, NOT_FOUND, 0};
 
   String buffer = "";
   boolean methodFound = false;
@@ -248,8 +274,6 @@ Request extractRequestInformation(String firstLine) {
           req.path = METRICS;
         } else if (buffer.equals("/config")) {
           req.path = CONFIG;
-        } else {
-          req.path = NOT_FOUND;
         }
         break;
       } else {
@@ -257,8 +281,6 @@ Request extractRequestInformation(String firstLine) {
           req.type = GET;
         } else if(buffer.equals("POST")) {
           req.type = POST;
-        } else {
-          req.type = NOT_KNOWN;
         }
         buffer = "";
         methodFound = true;
