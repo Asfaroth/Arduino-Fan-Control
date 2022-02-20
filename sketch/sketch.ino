@@ -126,8 +126,19 @@ void loop() {
                   
                   break;
                 } case CONFIG: {
+                  JSONVar curveJSON;
+                  for (int i = 0; i < curve.getSize(); i++) {
+                    JSONVar entry;
+                    entry["starting"] = curve.getValue(i).starting;
+                    entry["factor"] = curve.getValue(i).factor;
+
+                    curveJSON[i] = entry;
+                  }
+
                   JSONVar response;
                   response["IP"] = getIPString(Ethernet.localIP());
+                  response["pwm_start"] = pwmStart;
+                  response["curve"] = curveJSON;
                   
                   client.println("HTTP/1.1 200 OK");
                   client.println("Content-Type: text/json");
@@ -181,7 +192,7 @@ void loop() {
           currentLineIsBlank = true;
         } else if (c != '\r') {
           currentLineIsBlank = false;
-        } else { // as soon as the first \r reset firstLine as we got all information what we needed
+        } else { // as soon as the first \r appears: reset firstLine as we got all information what we need
           firstLine = false;
         }
       }
@@ -219,6 +230,12 @@ String getIPString(IPAddress ip) {
   return ipString;
 }
 
+/**
+ * Method that interprets the first line of an HTTP request in order to map it to the corrseponding enums.
+ * 
+ * @param firstLine the String representation of the first HTTP request line.
+ * @return Request struct object that caontains the needed request data to process it further
+ */
 Request extractRequestInformation(String firstLine) {
   Request req = {GET, METRICS};
 
